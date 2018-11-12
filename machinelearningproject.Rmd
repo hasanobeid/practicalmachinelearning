@@ -1,0 +1,123 @@
+---
+title: "Coursera - Practical Machine Learning Project"
+author: Hasan
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+##Executive Summary
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+<br><small><i>Summary from Coursera "Practical Machine Learning Course Project"</i></small>
+
+##Read Data
+```{r}
+library(caret)
+library(rattle)
+
+trainingUrl = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testingUrl = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+trainingfname = "pml-training.csv"
+testingfname = "pml-testing.csv"
+
+if(!file.exists(trainingfname)){
+    download.file(trainingUrl, destfile = trainingfname)
+}
+if(!file.exists(testingfname)){
+    download.file(testingUrl, destfile = testingfname)
+}
+
+training_or = read.csv2(file = trainingfname, header = T, sep = ",")
+testing_or = read.csv2(file = testingfname, header = T, sep = ",")
+```
+
+##Preprocessing
+```{r}
+nearzero_training = nearZeroVar(training_or, saveMetrics = T)$nzv
+
+#remove insignifacnt variables that have ~0 values
+training = training_or[, nearzero_training == F]
+
+#remove variables that have a mean of NAs above 70% of all values in that variable
+training1 = training[,-which(colMeans(is.na(training)) > 0.7)]
+
+#remove the first 6 columns as they hold data about the user which is not part of this study
+training1 = training1[,-c(1:6)]
+
+#transform all numeric values to numeric types for training and testing sets
+for (i in 1:(ncol(training1) - 1)){
+    training1[,i] = as.numeric(as.character(training1[,i]))
+}
+
+testing1 = testing_or[,names(training1)[1:52]]
+
+for (i in 1:(ncol(testing1) - 1)){
+    testing1[,i] = as.numeric(as.character(testing1[,i]))
+}
+```
+
+
+##Create Validation Dataset
+```{r}
+set.seed(2334)
+t = createDataPartition(training1$classe, p = 0.7, list = F)
+#subset of the training data
+training_1 = training1[t,]
+
+#subset of the training data to be handled as validation dataset
+training_2 = training1[-t,] 
+
+dim(training_1)
+dim(training_2)
+```
+After preprocessing, we went down to 53 variables from 160 originally.
+
+##Train Model with RandomForest
+Training model using random forest with cross validation of 4 folds.
+```{r cache=TRUE}
+fit <- train(classe ~ ., data=training_1, method="rf",trControl = trainControl(method = "cv", number = 4, allowParallel = TRUE, verboseIter = F))
+
+fit$finalModel
+```
+
+##Cross Validation
+```{r}
+#using training_2 which is the validation data set
+testModel = predict(fit, training_2)
+accuracy = confusionMatrix(training_2$classe, testModel)
+accuracy
+
+error = 1 - accuracy$overall[['Accuracy']]
+error
+```
+Using the validation data set the accuracy is high with 99.18% with an error rate of ~0.9%.
+
+```{r}
+varImp(fit)
+```
+We can see the most important variables in impacting the accuracy of 99%
+
+##Training with RPART
+```{r}
+fit2 <- train(classe ~ ., data=training_1, method="rpart",trControl = trainControl(method = "cv", number = 4, allowParallel = TRUE, verboseIter = F))
+
+fit2$finalModel
+fancyRpartPlot(fit2$finalModel)
+```
+
+The accuracy of the RPART model (49%) is very low compare to RandomForest.
+```{r}
+#using training_2 which is the validation data set
+testModel2 = predict(fit2, training_2)
+accuracy2 = confusionMatrix(training_2$classe, testModel2)
+accuracy2
+```
+
+##Prediction using the RandomForest
+Predicting on test data set
+```{r}
+predict(fit, testing1)
+```
+
+##Conclusion
+The randomforest model gives the highest accuracy from this study.
